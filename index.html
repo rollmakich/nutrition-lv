@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Питание · Лена & Вася</title>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:#f5f6f8; color:#1a1a1a; font-size:14px; }
+header { background:#1a1a1a; color:#fff; padding:14px 16px;
+  display:flex; justify-content:space-between; align-items:center; }
+header h1 { font-size:16px; font-weight:600; }
+header .right { display:flex; gap:10px; align-items:center; font-size:12px; }
+header .date { opacity:0.7; }
+.sync-dot { width:8px; height:8px; border-radius:50%; background:#6b7280; transition:background .3s; }
+.sync-dot.on { background:#10b981; }
+.sync-dot.error { background:#ef4444; }
+
+nav.tabs { display:flex; background:#fff; border-bottom:1px solid #e5e7eb;
+  overflow-x:auto; position:sticky; top:0; z-index:10; }
+nav.tabs button { flex:1; min-width:70px; padding:12px 6px; background:none;
+  border:none; border-bottom:2px solid transparent; font-size:12px;
+  color:#6b7280; cursor:pointer; font-weight:500; white-space:nowrap; }
+nav.tabs button.active { color:#1a1a1a; border-bottom-color:#1a1a1a; }
+
+main { padding:16px; max-width:720px; margin:0 auto; }
+section.pane { display:none; }
+section.pane.active { display:block; }
+
+.card { background:#fff; border-radius:12px; padding:14px; margin-bottom:12px;
+  box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+.card h2 { font-size:14px; font-weight:600; margin-bottom:10px; }
+
+.user-toggle { display:flex; gap:4px; background:#f0f1f3; border-radius:8px;
+  padding:3px; margin-bottom:12px; }
+.user-toggle button { flex:1; padding:8px; background:none; border:none;
+  border-radius:6px; font-size:13px; font-weight:500; color:#6b7280; cursor:pointer; }
+.user-toggle button.active { background:#fff; color:#1a1a1a;
+  box-shadow:0 1px 2px rgba(0,0,0,0.06); }
+.user-toggle button.me-marker::after { content:' •'; color:#10b981; }
+
+.progress-row { display:grid; grid-template-columns:60px 1fr 90px;
+  align-items:center; gap:10px; margin-bottom:10px; font-size:13px; }
+.progress-row .label { font-weight:500; }
+.progress-row .bar { height:8px; background:#f0f1f3; border-radius:4px; overflow:hidden; }
+.progress-row .bar-fill { height:100%; transition:width .3s; }
+.progress-row .nums { font-size:12px; color:#6b7280; text-align:right;
+  font-variant-numeric:tabular-nums; }
+.bar-kcal { background:#1a1a1a; }
+.bar-p { background:#2563eb; }
+.bar-f { background:#f59e0b; }
+.bar-c { background:#10b981; }
+.bar-fill.over { background:#dc2626 !important; }
+
+.add-row { display:flex; gap:6px; margin-bottom:10px; }
+.add-row select, .add-row input { padding:9px 10px; border:1px solid #d1d5db;
+  border-radius:8px; font-size:13px; font-family:inherit; background:#fff; }
+.add-row select { flex:1; min-width:0; }
+.add-row button { padding:9px 14px; background:#1a1a1a; color:#fff; border:none;
+  border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap; }
+
+.meal-item { display:grid; grid-template-columns:1fr auto auto; gap:10px;
+  padding:10px 0; border-bottom:1px solid #f0f1f3; align-items:center; font-size:13px; }
+.meal-item:last-child { border-bottom:none; }
+.meal-item .name { font-weight:500; }
+.mod-badge { background:#fef3c7; color:#92400e; padding:1px 5px;
+  border-radius:4px; font-size:10px; margin-left:4px; font-weight:600; }
+.meal-item .meta { font-size:12px; color:#6b7280; margin-top:2px; }
+.meal-item .note { font-size:11px; color:#92400e; font-style:italic; margin-top:2px; }
+.meal-item .kcal { font-weight:600; font-variant-numeric:tabular-nums; }
+.meal-item .actions { display:flex; gap:4px; }
+.meal-item .actions button { background:none; border:none; color:#9ca3af;
+  cursor:pointer; font-size:16px; padding:0 4px; }
+.meal-item .actions .edit:hover { color:#2563eb; }
+.meal-item .actions .del:hover { color:#dc2626; }
+
+.empty-state { text-align:center; padding:24px 0; color:#9ca3af; font-size:13px; }
+
+.recipe-item { padding:12px; border:1px solid #e5e7eb; border-radius:10px; margin-bottom:8px; }
+.recipe-item .top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.recipe-item .name { font-weight:600; font-size:13px; }
+.recipe-item .portion { font-size:12px; color:#6b7280; margin-top:2px; }
+.recipe-item .bju { display:flex; gap:6px; font-size:11px; color:#6b7280;
+  margin-top:6px; font-variant-numeric:tabular-nums; flex-wrap:wrap; }
+.recipe-item .bju span { background:#f0f1f3; padding:2px 6px; border-radius:4px; }
+.recipe-item .actions { display:flex; gap:6px; }
+.recipe-item .actions button { background:#f0f1f3; border:none; border-radius:6px;
+  padding:6px 10px; font-size:11px; cursor:pointer; }
+
+.day-cell { display:grid; grid-template-columns:70px 1fr; gap:10px;
+  padding:10px 0; border-bottom:1px solid #f0f1f3; align-items:start; }
+.day-cell .day-name { font-weight:600; font-size:13px; padding-top:4px; }
+.day-cell .day-meals { display:flex; flex-wrap:wrap; gap:4px; }
+.pill { background:#f0f1f3; border-radius:12px; padding:4px 8px 4px 10px;
+  font-size:11px; display:inline-flex; align-items:center; gap:4px; }
+.pill button { background:none; border:none; color:#9ca3af; cursor:pointer;
+  font-size:14px; padding:0; line-height:1; }
+.pill.add { cursor:pointer; border:1px dashed #d1d5db; background:#fff; }
+
+/* SHOP LIST */
+.shop-list { display:grid; gap:6px; }
+.shop-row { display:grid; grid-template-columns:24px 1fr auto;
+  padding:10px 12px; background:#fafafa; border-radius:8px; gap:8px;
+  align-items:center; font-size:13px; }
+.shop-row.checked { opacity:0.5; }
+.shop-row.checked .name { text-decoration:line-through; }
+.shop-row .check { width:18px; height:18px; border:2px solid #d1d5db;
+  border-radius:4px; cursor:pointer; flex-shrink:0; display:flex;
+  align-items:center; justify-content:center; }
+.shop-row.checked .check { background:#10b981; border-color:#10b981; color:#fff; }
+.shop-row .info { display:grid; gap:2px; min-width:0; }
+.shop-row .name { font-weight:500; }
+.shop-row .qty-line { font-size:11px; color:#6b7280;
+  font-variant-numeric:tabular-nums; display:flex; gap:6px; flex-wrap:wrap; }
+.shop-row .qty-line .price { color:#1a1a1a; font-weight:600; }
+.shop-row .qty-line .needed { color:#9ca3af; }
+.shop-row .qty-line .from-fridge { color:#10b981; }
+.shop-row .links { display:flex; gap:4px; flex-shrink:0; }
+.shop-row .links a { background:#f0f1f3; padding:5px 8px; border-radius:6px;
+  font-size:10px; text-decoration:none; color:#1a1a1a; font-weight:500;
+  white-space:nowrap; }
+.shop-row .links a:hover { background:#e5e7eb; }
+.shop-row .edit-btn { background:none; border:none; color:#9ca3af; cursor:pointer;
+  font-size:14px; padding:2px 6px; }
+.shop-row .edit-btn:hover { color:#2563eb; }
+
+.total-row { display:flex; justify-content:space-between; padding:12px 12px 4px;
+  font-weight:600; font-size:15px; }
+.total-row .sum { color:#1a1a1a; font-variant-numeric:tabular-nums; }
+
+/* FRIDGE */
+.fridge-item { display:grid; grid-template-columns:1fr auto auto;
+  padding:10px 0; border-bottom:1px solid #f0f1f3; gap:10px; align-items:center;
+  font-size:13px; }
+.fridge-item:last-child { border-bottom:none; }
+.fridge-item .name { font-weight:500; }
+.fridge-item .qty { color:#6b7280; font-size:12px; font-variant-numeric:tabular-nums; margin-top:2px; }
+.fridge-item .expiry { font-size:11px; padding:3px 8px; border-radius:4px;
+  font-weight:500; white-space:nowrap; }
+.fridge-item .expiry.ok { background:#e1f5ee; color:#0f766e; }
+.fridge-item .expiry.soon { background:#fef3c7; color:#92400e; }
+.fridge-item .expiry.expired { background:#fee2e2; color:#dc2626; }
+.fridge-item .del-btn { background:#fee; border:none; border-radius:6px;
+  padding:6px 12px; font-size:16px; cursor:pointer; color:#dc2626; font-weight:600;
+  line-height:1; }
+.fridge-item .del-btn:hover { background:#fcc; }
+.fridge-item .from-shop { font-size:10px; background:#dbeafe; color:#1e40af;
+  padding:1px 5px; border-radius:3px; margin-left:4px; font-weight:500; }
+.fridge-item .edit-exp { background:none; border:1px dashed #d1d5db; border-radius:5px;
+  padding:3px 7px; font-size:11px; cursor:pointer; color:#6b7280; }
+.fridge-item .edit-exp:hover { background:#f0f1f3; }
+
+/* PANTRY (кладовая) */
+.day-nav { display:flex; align-items:center; gap:10px; margin-bottom:10px;
+  background:white; padding:10px 14px; border-radius:12px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.day-nav-btn { flex:0 0 36px; height:36px; border:1px solid #e5e7eb;
+  background:white; border-radius:8px; cursor:pointer; font-size:14px;
+  color:#374151; }
+.day-nav-btn:hover:not(:disabled) { background:#f3f4f6; }
+.day-nav-btn:disabled { opacity:0.3; cursor:not-allowed; }
+.day-nav-label { flex:1; text-align:center; font-weight:600; font-size:15px;
+  display:flex; flex-direction:column; align-items:center; gap:2px; }
+.day-nav-jump { background:none; border:none; color:#3b82f6; font-size:11px;
+  cursor:pointer; padding:0; text-decoration:underline; }
+.day-nav-jump:hover { color:#1d4ed8; }
+
+/* WHAT TO EAT */
+.wte-row { display:flex; gap:10px; padding:10px; border:1px solid #e5e7eb;
+  border-radius:10px; margin-bottom:8px; align-items:center; font-size:13px; }
+.wte-row.full { background:#ecfdf5; border-color:#a7f3d0; }
+.wte-row.partial { background:#fffbeb; border-color:#fde68a; }
+.wte-row.poor { background:#f9fafb; }
+.wte-info { flex:1; min-width:0; }
+.wte-name { font-weight:600; }
+.wte-meta { font-size:11px; color:#6b7280; margin-top:2px; }
+.wte-missing { font-size:11px; color:#92400e; margin-top:3px; }
+.wte-row.poor .wte-missing { color:#6b7280; }
+.wte-pct { font-weight:700; font-size:14px; min-width:45px; text-align:right;
+  font-variant-numeric:tabular-nums; }
+.wte-row.full .wte-pct { color:#047857; }
+.wte-row.partial .wte-pct { color:#b45309; }
+.wte-row.poor .wte-pct { color:#9ca3af; }
+.wte-cook-btn { background:#1a1a1a; color:white; border:none; border-radius:8px;
+  padding:7px 12px; font-size:12px; cursor:pointer; font-weight:500; }
+.wte-cook-btn:hover { background:#374151; }
+.wte-empty { padding:20px; text-align:center; color:#6b7280; font-size:13px; }
+#pantrySection details { padding:0; }
+#pantrySection summary { font-size:14px; font-weight:600; cursor:pointer;
+  padding:4px 0; user-select:none; list-style:none; }
+#pantrySection summary::-webkit-details-marker { display:none; }
+#pantrySection summary::before { content:'▶ '; font-size:10px; color:#6b7280;
+  display:inline-block; transition:transform 0.15s; }
+#pantrySection details[open] summary::before { transform:rotate(90deg); }
+.pantry-list { margin-top:10px; }
+.pantry-item { padding:8px 0; border-bottom:1px solid #f0f1f3; font-size:13px; }
+.pantry-item:last-child { border-bottom:none; }
+.pantry-name { font-weight:500; }
+.pantry-bju { color:#6b7280; font-size:12px; margin-top:2px; font-variant-numeric:tabular-nums; }
+
+/* STATS / WEEK CHARTS */
+.week-charts { margin-top:10px; }
+.metric-row { margin-bottom:14px; }
+.metric-head { display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom:6px; font-size:12px; }
+.metric-label { font-weight:600; }
+.metric-avg { color:#6b7280; font-size:11px; }
+.chart-area { position:relative; height:80px; display:flex; align-items:flex-end;
+  gap:3px; padding-bottom:18px; border-bottom:1px solid #f0f1f3; }
+.chart-area .target-line { position:absolute; left:0; right:0; height:1px;
+  background:#a3a3a3; border-top:1px dashed #a3a3a3;
+  background:transparent; pointer-events:none; }
+.day-col { flex:1; display:flex; flex-direction:column; align-items:stretch;
+  min-width:14px; height:100%; position:relative; }
+.day-col.today .day-bar-wrap { box-shadow:0 0 0 2px #1a1a1a inset; border-radius:4px; }
+.day-bar-wrap { flex:1; display:flex; align-items:flex-end; padding:0 1px;
+  border-radius:4px; }
+.day-bar { width:100%; background:#d1d5db; border-radius:3px 3px 0 0; min-height:1px;
+  transition:background 0.15s; }
+.day-bar.empty { background:#f0f1f3; }
+.day-bar.low { background:#fde68a; }
+.day-bar.medium { background:#fcd34d; }
+.day-bar.ok { background:#10b981; }
+.day-bar.over { background:#ef4444; }
+.day-label { position:absolute; bottom:0; left:0; right:0; text-align:center;
+  font-size:10px; color:#9ca3af; padding-top:2px; }
+.stats-summary { display:flex; gap:14px; margin:8px 0 16px; padding:10px 0;
+  border-top:1px solid #f0f1f3; border-bottom:1px solid #f0f1f3; }
+.stats-summary > div { flex:1; text-align:center; }
+.stats-summary .num { display:block; font-size:20px; font-weight:600; }
+.stats-summary .lbl { display:block; font-size:10px; color:#6b7280; margin-top:2px;
+  text-transform:uppercase; letter-spacing:0.3px; }
+.stats-filters { display:flex; flex-direction:column; gap:12px; margin-top:10px; }
+.filter-group { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.filter-group label { font-size:12px; color:#6b7280; min-width:78px; }
+.stats-user-toggle { display:inline-flex; gap:0; }
+.stats-user-toggle button { padding:6px 14px; font-size:12px; }
+.period-buttons { display:flex; gap:4px; flex-wrap:wrap; }
+.period-buttons button { padding:6px 10px; font-size:11px; border:1px solid #e5e7eb;
+  background:#fff; border-radius:6px; cursor:pointer; color:#6b7280; }
+.period-buttons button.active { background:#1a1a1a; color:#fff; border-color:#1a1a1a; }
+.period-buttons button:hover:not(.active) { background:#f0f1f3; }
+#customPeriodInputs input[type="date"] { padding:5px 8px; font-size:12px;
+  border:1px solid #d1d5db; border-radius:5px; }
+.top-list { margin-top:6px; }
+.top-row { display:flex; align-items:center; gap:10px; padding:10px 0;
+  border-bottom:1px solid #f0f1f3; }
+.top-row:last-child { border-bottom:none; }
+.top-row .rank { font-size:13px; font-weight:600; color:#9ca3af; min-width:22px;
+  text-align:right; font-variant-numeric:tabular-nums; }
+.top-content { flex:1; min-width:0; }
+.top-name { font-size:13px; font-weight:500; }
+.top-meta { font-size:11px; color:#6b7280; margin-top:1px; }
+.top-bar { height:4px; background:#f0f1f3; border-radius:2px; margin-top:6px;
+  overflow:hidden; }
+.top-bar-fill { height:100%; background:#1a1a1a; border-radius:2px; }
+
+/* REGULARS */
+.regular-row { display:grid; grid-template-columns:1fr 80px 30px;
+  padding:8px 0; border-bottom:1px solid #f0f1f3; gap:8px; align-items:center;
+  font-size:13px; }
+.regular-row:last-child { border-bottom:none; }
+.regular-row .qty { font-variant-numeric:tabular-nums; color:#6b7280; font-size:12px; }
+
+/* SETTINGS */
+.settings-row { display:grid; grid-template-columns:1fr 100px; gap:10px;
+  padding:10px 0; border-bottom:1px solid #f0f1f3; align-items:center; font-size:13px; }
+.settings-row input { padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;
+  text-align:right; font-family:inherit; font-size:13px; }
+
+/* BUTTONS */
+.btn-secondary { width:100%; padding:10px; background:#f0f1f3; border:none;
+  border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; margin-top:8px; }
+.btn-primary { width:100%; padding:10px; background:#1a1a1a; color:#fff;
+  border:none; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; }
+.btn-danger { width:100%; padding:10px; background:#fee; color:#c00;
+  border:none; border-radius:8px; font-size:13px; cursor:pointer; margin-top:8px; }
+
+/* MODALS */
+.modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4);
+  z-index:100; align-items:flex-end; justify-content:center; }
+.modal-bg.active { display:flex; }
+.modal { background:#fff; border-radius:16px 16px 0 0; padding:18px;
+  max-width:600px; width:100%; max-height:92vh; overflow-y:auto; }
+@media (min-width:640px) {
+  .modal-bg { align-items:center; padding:20px; }
+  .modal { border-radius:12px; max-height:90vh; }
+}
+.modal h3 { font-size:15px; margin-bottom:12px; display:flex;
+  justify-content:space-between; align-items:center; }
+.modal h3 .close { background:none; border:none; font-size:22px;
+  cursor:pointer; color:#6b7280; padding:0; line-height:1; }
+.modal h4 { font-size:12px; color:#6b7280; text-transform:uppercase;
+  letter-spacing:0.5px; margin:12px 0 6px; }
+
+.recipe-pick { padding:10px 12px; border:1px solid #e5e7eb; border-radius:8px;
+  margin-bottom:6px; cursor:pointer; font-size:13px; }
+.recipe-pick:hover { background:#f5f6f8; }
+.recipe-pick .meta { font-size:11px; color:#6b7280; margin-top:2px; }
+.recipe-pick.variant { background:#fef9e7; border-color:#fbbf24; }
+.vlabel { font-size:10px; background:#f59e0b; color:#fff; padding:1px 6px;
+  border-radius:4px; margin-right:6px; font-weight:600; }
+
+.ing-row { display:grid; grid-template-columns:1fr 70px 24px 28px 28px; gap:6px;
+  align-items:center; margin-bottom:6px; font-size:13px; }
+.ing-row .name { padding-left:4px; }
+.ing-row input[type=number] { padding:6px 8px; border:1px solid #d1d5db;
+  border-radius:6px; font-size:13px; text-align:right; font-family:inherit; }
+.ing-row .unit { color:#6b7280; font-size:12px; text-align:center; }
+.ing-row button { background:none; border:none; cursor:pointer;
+  color:#9ca3af; font-size:16px; padding:4px; }
+.ing-row .scale-btn { font-size:14px; color:#3b82f6; }
+.ing-row .scale-btn:hover { color:#1d4ed8; }
+
+.live-bju { background:#e1f5ee; border:1px solid #9fe1cb; border-radius:8px;
+  padding:12px; margin-top:12px; text-align:center; }
+.live-bju .kcal-big { font-size:22px; font-weight:700; margin-bottom:4px; }
+.live-bju .bju-row { display:flex; justify-content:center; gap:14px;
+  font-size:12px; color:#1a1a1a; font-variant-numeric:tabular-nums; }
+
+.portion-input { display:grid; grid-template-columns:1fr 80px auto; gap:8px;
+  align-items:center; margin-bottom:12px; padding-bottom:12px;
+  border-bottom:1px solid #f0f1f3; }
+.portion-input input { padding:8px; border:1px solid #d1d5db; border-radius:6px;
+  text-align:right; font-size:13px; font-family:inherit; }
+.portion-input .both-btn { padding:7px 10px; font-size:12px; white-space:nowrap; }
+
+.note-input { width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px;
+  font-size:13px; font-family:inherit; margin-top:8px; resize:vertical; min-height:50px; }
+
+.quick-stats { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; margin-top:8px; }
+.quick-stats .stat { background:#f0f1f3; padding:8px; border-radius:6px; text-align:center; }
+.quick-stats .stat .val { font-weight:600; font-size:14px; }
+.quick-stats .stat .lbl { font-size:11px; color:#6b7280; }
+
+textarea.config-paste { width:100%; padding:8px; border:1px solid #d1d5db;
+  border-radius:6px; font-family:ui-monospace,monospace; font-size:11px;
+  min-height:100px; resize:vertical; }
+
+.sync-status { display:flex; align-items:center; gap:6px; padding:8px;
+  background:#f0f1f3; border-radius:6px; font-size:12px; margin-top:8px; }
+
+.ing-search { width:100%; padding:8px; border:1px solid #d1d5db;
+  border-radius:6px; font-family:inherit; font-size:13px; margin-bottom:8px; }
+.ing-suggest { max-height:200px; overflow-y:auto; border:1px solid #e5e7eb;
+  border-radius:8px; margin-bottom:8px; }
+.ing-suggest .row { padding:8px 12px; cursor:pointer;
+  border-bottom:1px solid #f0f1f3; font-size:13px; }
+.ing-suggest .row:hover { background:#f5f6f8; }
+
+/* DEDUCT MODAL */
+.deduct-row { display:grid; grid-template-columns:24px 1fr auto;
+  gap:8px; padding:10px 0; border-bottom:1px solid #f0f1f3; align-items:center; }
+.deduct-row .check { cursor:pointer; }
+.deduct-row .name { font-size:13px; font-weight:500; }
+.deduct-row .meta { font-size:11px; color:#6b7280; }
+.deduct-row .qty { font-size:12px; font-variant-numeric:tabular-nums; }
+
+/* PRODUCT EDIT */
+.prod-edit-row { display:grid; grid-template-columns:120px 1fr;
+  gap:8px; margin-bottom:8px; align-items:center; font-size:13px; }
+.prod-edit-row input { padding:7px 9px; border:1px solid #d1d5db;
+  border-radius:6px; font-size:13px; font-family:inherit; }
+.prod-edit-row .hint { font-size:11px; color:#9ca3af; }
+
+/* BATCHES */
+.batch-card { padding:12px; border:1px solid #e5e7eb; border-radius:10px;
+  margin-bottom:8px; }
+.batch-card .top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.batch-card .name { font-weight:600; font-size:13px; }
+.batch-card .meta { font-size:12px; color:#6b7280; margin-top:3px; }
+.batch-card .progress-portions { height:6px; background:#f0f1f3; border-radius:3px;
+  overflow:hidden; margin-top:8px; }
+.batch-card .progress-portions .fill { height:100%; background:#10b981; transition:width .3s; }
+.batch-card .bju-mini { display:flex; gap:6px; font-size:11px; color:#6b7280;
+  margin-top:6px; font-variant-numeric:tabular-nums; flex-wrap:wrap; }
+.batch-card .bju-mini span { background:#f0f1f3; padding:2px 6px; border-radius:4px; }
+.batch-card .actions { display:flex; gap:4px; }
+.batch-card .actions button { background:#f0f1f3; border:none; border-radius:6px;
+  padding:6px 10px; font-size:11px; cursor:pointer; }
+.batch-card .expiry-tag { font-size:10px; padding:2px 6px; border-radius:4px;
+  font-weight:500; margin-left:6px; }
+
+/* Batch banner inside edit-meal modal */
+.batch-banner { display:flex; align-items:center; gap:10px;
+  background:#fefce8; border:1px solid #fbbf24; border-radius:8px;
+  padding:10px 12px; margin-bottom:12px; }
+.batch-banner .icon { font-size:18px; flex-shrink:0; }
+.batch-banner .info { flex:1; min-width:0; }
+.batch-banner .info .name { font-weight:600; font-size:13px; }
+.batch-banner .info .meta { font-size:11px; color:#92400e; margin-top:2px; }
+.batch-banner .remove { background:none; border:none; color:#92400e; cursor:pointer;
+  font-size:18px; padding:4px 8px; line-height:1; flex-shrink:0; }
+.batch-banner .remove:hover { color:#dc2626; }
+
+/* Section header in composite edit */
+.fresh-section-header { font-size:12px; color:#6b7280; text-transform:uppercase;
+  letter-spacing:0.5px; margin:14px 0 8px; }
+
+/* Recipe row with batch indicator */
+.batch-tag { display:inline-block; font-size:10px; background:#fef3c7;
+  color:#92400e; padding:1px 6px; border-radius:4px; margin-left:6px;
+  font-weight:600; }
+
+/* Batch in pick search */
+.pick-batch { display:grid; grid-template-columns:1fr 70px 32px; gap:6px;
+  padding:10px 12px; border:1px solid #fbbf24; background:#fefce8; border-radius:8px;
+  margin-bottom:6px; align-items:center; }
+.pick-batch .info > div:first-child { font-size:13px; font-weight:500; }
+.pick-batch .meta-mini { font-size:11px; color:#92400e; margin-top:2px; }
+.pick-batch input { padding:6px 8px; border:1px solid #d1d5db; border-radius:5px;
+  text-align:right; font-size:12px; font-family:inherit; }
+.pick-batch button { background:#1a1a1a; color:#fff; border:none; border-radius:5px;
+  padding:6px 0; font-size:16px; cursor:pointer; line-height:1; }
+.suggest-row { display:grid; grid-template-columns:1fr 70px 32px; gap:6px;
+  padding:8px 12px; border-bottom:1px solid #f0f1f3; align-items:center; }
+.suggest-row:last-child { border-bottom:none; }
+.suggest-row .info { min-width:0; }
+.suggest-row .info > div:first-child { font-size:13px; font-weight:500; }
+.suggest-row .meta-mini { font-size:11px; color:#6b7280; margin-top:1px; }
+.suggest-row .g-mini { padding:6px 8px; border:1px solid #d1d5db; border-radius:5px;
+  text-align:right; font-size:12px; font-family:inherit; }
+.suggest-row .add-btn { background:#1a1a1a; color:#fff; border:none; border-radius:5px;
+  padding:6px 0; font-size:16px; cursor:pointer; line-height:1; }
+
+/* Multi-select suggest row */
+.suggest-multi { display:grid; grid-template-columns:24px 1fr 70px 18px;
+  gap:8px; padding:8px 10px; border-bottom:1px solid #f0f1f3;
+  align-items:center; cursor:pointer; }
+.suggest-multi:last-child { border-bottom:none; }
+.suggest-multi:hover { background:#f5f6f8; }
+.suggest-multi.selected { background:#e1f5ee; }
+.suggest-multi .check { width:18px; height:18px; border:2px solid #d1d5db;
+  border-radius:4px; display:flex; align-items:center; justify-content:center;
+  font-size:12px; flex-shrink:0; color:#fff; }
+.suggest-multi.selected .check { background:#10b981; border-color:#10b981; }
+.suggest-multi .info { min-width:0; }
+.suggest-multi .info > div:first-child { font-size:13px; font-weight:500; }
+.suggest-multi .info .meta-mini { font-size:11px; color:#6b7280; margin-top:1px; }
+.suggest-multi input[type=number] { padding:5px 7px; border:1px solid #d1d5db;
+  border-radius:5px; text-align:right; font-size:12px; font-family:inherit; }
+.suggest-multi .unit { color:#6b7280; font-size:11px; text-align:center; }
+.suggest-section-header { font-size:11px; padding:8px 12px; font-weight:700;
+  text-transform:uppercase; letter-spacing:0.5px; }
+.suggest-section-header.related { color:#92400e; background:#fef3c7;
+  border-left:3px solid #f59e0b; padding-left:9px; }
+.suggest-section-header.rest { color:#6b7280; background:#f9fafb;
+  border-top:1px solid #e5e7eb; }
+.btn-primary[disabled] { opacity:0.5; cursor:not-allowed; }
+.ing-suggest { max-height:340px; }
+
+/* Import receipt rows */
+.import-row { display:grid; grid-template-columns:22px 1fr 70px 18px; gap:8px;
+  padding:9px 4px; border-bottom:1px solid #f0f1f3; align-items:center; }
+.import-row:last-child { border-bottom:none; }
+.import-row input[type=checkbox] { width:18px; height:18px; cursor:pointer; }
+.import-row .info { min-width:0; overflow:hidden; }
+.import-row .info .name { font-size:13px; font-weight:500;
+  white-space:normal !important; overflow:visible !important; text-overflow:clip !important;
+  word-break:break-word; line-height:1.3; }
+.import-row .info .meta { font-size:11px; color:#9ca3af; margin-top:2px;
+  white-space:normal; word-break:break-word; line-height:1.3; }
+.import-row input[type=number] { padding:5px 7px; border:1px solid #d1d5db;
+  border-radius:5px; text-align:right; font-size:12px; font-family:inherit; }
+.import-row .unit { font-size:11px; color:#6b7280; }
+#loadingOverlay { position:fixed; inset:0; background:rgba(0,0,0,0.6);
+  z-index:200; display:flex; align-items:center; justify-content:center;
+  color:#fff; font-size:14px; text-align:center; padding:20px; }
+#loadingOverlay .box { background:#1a1a1a; border-radius:12px; padding:24px 32px;
+  max-width:300px; }
+#loadingOverlay .spinner { font-size:32px; margin-bottom:12px; animation:spin 1.5s linear infinite; display:inline-block; }
+@keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+
+/* Rescale-by-ingredient button */
+.ing-row.with-rescale { grid-template-columns:1fr 65px 16px 28px 24px; gap:4px; }
+.ing-row .rescale-btn { background:#e0f2fe; color:#0369a1; border:none;
+  border-radius:5px; padding:5px 4px; font-size:12px; cursor:pointer; line-height:1; }
+.ing-row .rescale-btn:hover { background:#bae6fd; }
+
+/* Pick recipe with portions */
+.pick-with-portions { display:grid; grid-template-columns:1fr 70px 32px; gap:6px;
+  padding:10px 12px; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:6px;
+  align-items:center; }
+.pick-with-portions .info > div:first-child { font-size:13px; font-weight:500; }
+.pick-with-portions .meta-mini { font-size:11px; color:#6b7280; margin-top:1px; }
+.pick-with-portions input { padding:6px 8px; border:1px solid #d1d5db; border-radius:5px;
+  text-align:right; font-size:12px; font-family:inherit; }
+.pick-with-portions button { background:#1a1a1a; color:#fff; border:none; border-radius:5px;
+  padding:6px 0; font-size:16px; cursor:pointer; line-height:1; }
+
+@media (max-width:480px) {
+  .progress-row { grid-template-columns:50px 1fr 80px; gap:8px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Питание · Л&amp;В</h1>
+  <div class="right">
+    <span class="sync-dot" id="syncDot"></span>
+    <span class="date" id="todayLabel"></span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="active" data-tab="today">Сегодня</button>
+  <button data-tab="recipes">Рецепты</button>
+  <button data-tab="fridge">Холодильник</button>
+  <button data-tab="shop">Закупки</button>
+  <button data-tab="stats">Статистика</button>
+  <button data-tab="settings">Настройки</button>
+</nav>
+
+<main>
+  <!-- ==================== СЕГОДНЯ ==================== -->
+  <section class="pane active" id="pane-today">
+    <div class="day-nav">
+      <button class="day-nav-btn" onclick="shiftViewDate(-1)" title="Предыдущий день">◀</button>
+      <div class="day-nav-label">
+        <span id="dayLabel">Сегодня</span>
+        <button class="day-nav-jump" id="dayNavJump" onclick="jumpToToday()" style="display:none;">К сегодня</button>
+      </div>
+      <button class="day-nav-btn" id="dayNavNext" onclick="shiftViewDate(1)" title="Следующий день" disabled>▶</button>
+    </div>
+    <div class="user-toggle" id="userToggle">
+      <button class="active" data-user="lena">Лена</button>
+      <button data-user="vasya">Вася</button>
+    </div>
+    <div class="card">
+      <h2>Прогресс дня</h2>
+      <div id="progressBars"></div>
+    </div>
+    <div class="card">
+      <h2>Добавить</h2>
+      <button class="btn-primary" onclick="openPickModal()">🔍 Найти блюдо или продукт</button>
+      <button class="btn-secondary" onclick="openWhatToEat()" style="margin-top:6px;">🍽 Что съесть?</button>
+      <button class="btn-secondary" onclick="addQuickCustom()">+ Произвольное (вручную ввести ккал)</button>
+    </div>
+    <div class="card">
+      <h2>Сегодня съедено</h2>
+      <div id="mealsList"></div>
+      <button class="btn-secondary" id="saveAsCombo" onclick="saveCurrentAsCombo()" style="display:none;">
+        💾 Сохранить как готовое блюдо
+      </button>
+    </div>
+    <div class="card" id="todayWeekSummary" style="display:none;"></div>
+  </section>
+
+  <!-- ==================== РЕЦЕПТЫ ==================== -->
+  <section class="pane" id="pane-recipes">
+    <div class="card">
+      <h2>База рецептов</h2>
+      <div id="recipesList"></div>
+      <button class="btn-secondary" onclick="openRecipeEdit(null)">+ Добавить рецепт</button>
+    </div>
+    <div class="card">
+      <h2>Сохранённые блюда</h2>
+      <div id="savedList"></div>
+      <div class="empty-state" id="savedEmpty" style="display:none;">
+        Пока нет
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== ХОЛОДИЛЬНИК ==================== -->
+  <section class="pane" id="pane-fridge">
+    <div class="card">
+      <h2>📥 Импорт чека / заказа</h2>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:10px;">Загрузи фото чека или вставь текст из email/приложения — продукты автоматически попадут в холодильник.</p>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-secondary" style="flex:1;margin-top:0;" onclick="document.getElementById('receiptFileInput').click()">📸 Фото / PDF</button>
+        <button class="btn-secondary" style="flex:1;margin-top:0;" onclick="openTextImport()">📋 Текст</button>
+      </div>
+      <button class="btn-secondary" style="margin-top:8px;" onclick="openBundleImport()">📦 Импорт стартовой базы продуктов</button>
+      <input type="file" id="receiptFileInput" accept="image/*,application/pdf,.pdf" style="display:none" onchange="handleReceiptPhoto(event)">
+    </div>
+    <div class="card">
+      <h2>🍳 Готовые заготовки</h2>
+      <div id="batchesList"></div>
+      <button class="btn-secondary" onclick="openCreateBatchModal(null)">+ Создать заготовку</button>
+    </div>
+    <div class="card">
+      <h2>В холодильнике сейчас</h2>
+      <div id="fridgeList"></div>
+      <button class="btn-secondary" onclick="openAddFridge()">+ Добавить продукт</button>
+    </div>
+    <div class="card" id="fridgeExpiringCard" style="display:none;">
+      <h2>⚠ Скоро испортится</h2>
+      <div id="fridgeExpiringList"></div>
+    </div>
+    <div class="card" id="pantrySection" style="display:none;"></div>
+  </section>
+
+  <!-- ==================== ЗАКУПКИ ==================== -->
+  <section class="pane" id="pane-shop">
+    <div class="card">
+      <h2>Регулярные продукты</h2>
+      <div id="regularsList"></div>
+      <button class="btn-secondary" onclick="openAddRegular()">+ Добавить регулярный</button>
+    </div>
+
+    <div class="card">
+      <h2>На неделю — без привязки к дням</h2>
+      <p style="font-size:11px;color:#9ca3af;margin-bottom:8px;">Блюда которые планируешь съесть за неделю в общем (не важно когда). Например «4 салата с индейкой», «10 блинчиков».</p>
+      <div id="weekBucket"></div>
+    </div>
+
+    <div class="card">
+      <h2>План на неделю</h2>
+      <div id="weekPlan"></div>
+      <button class="btn-secondary" onclick="autoFillFromHistory()">⚡ По истории (14 дней)</button>
+      <button class="btn-secondary" onclick="clearWeekPlan()">Очистить план</button>
+    </div>
+
+    <div class="card">
+      <h2>Список закупки</h2>
+      <p style="font-size:11px;color:#9ca3af;margin-bottom:8px;">Учтены: план + регулярка − холодильник, округлено до упаковок</p>
+      <div id="shopList" class="shop-list"></div>
+      <div class="total-row" id="totalRow" style="display:none;">
+        <span>Итого:</span>
+        <span class="sum" id="totalSum">0 ₽</span>
+      </div>
+      <button class="btn-primary" onclick="copyShopList()" style="margin-top:10px;">📋 Скопировать список</button>
+    </div>
+
+    <div class="card">
+      <h2>Сводка КБЖУ за неделю (план)</h2>
+      <div id="weekSummary"></div>
+    </div>
+  </section>
+
+  <!-- ==================== СТАТИСТИКА ==================== -->
+  <section class="pane" id="pane-stats">
+    <div class="card">
+      <h2>Статистика питания</h2>
+      <div class="stats-filters">
+        <div class="filter-group">
+          <label>Пользователь:</label>
+          <div class="user-toggle stats-user-toggle">
+            <button class="active" data-stat-user="lena" onclick="setStatsUser('lena')">Лена</button>
+            <button data-stat-user="vasya" onclick="setStatsUser('vasya')">Вася</button>
+            <button data-stat-user="all" onclick="setStatsUser('all')">Оба</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label>Период:</label>
+          <div class="period-buttons">
+            <button class="active" data-period="7" onclick="setStatsPeriod(7)">Неделя</button>
+            <button data-period="30" onclick="setStatsPeriod(30)">Месяц</button>
+            <button data-period="90" onclick="setStatsPeriod(90)">3 мес</button>
+            <button data-period="180" onclick="setStatsPeriod(180)">Полгода</button>
+            <button data-period="365" onclick="setStatsPeriod(365)">Год</button>
+            <button data-period="custom" onclick="toggleCustomPeriod()">Свой</button>
+          </div>
+        </div>
+        <div class="filter-group" id="customPeriodInputs" style="display:none;">
+          <label>С:</label>
+          <input type="date" id="statsDateFrom" onchange="applyCustomPeriod()">
+          <label>По:</label>
+          <input type="date" id="statsDateTo" onchange="applyCustomPeriod()">
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="statsCharts"></div>
+    <div class="card" id="statsTopRecipes"></div>
+    <div class="card" id="statsTopProducts"></div>
+  </section>
+
+  <!-- ==================== НАСТРОЙКИ ==================== -->
+  <section class="pane" id="pane-settings">
+    <div class="card">
+      <h2>Этот телефон — кто?</h2>
+      <div class="user-toggle" id="identityToggle">
+        <button data-id="lena">Лена</button>
+        <button data-id="vasya">Вася</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Цели — Лена</h2>
+      <div class="settings-row"><span>Калории</span><input type="number" id="t-lena-kcal"></div>
+      <div class="settings-row"><span>Белки, г</span><input type="number" id="t-lena-p"></div>
+      <div class="settings-row"><span>Жиры, г</span><input type="number" id="t-lena-f"></div>
+      <div class="settings-row"><span>Углеводы, г</span><input type="number" id="t-lena-c"></div>
+      <div class="settings-row"><span>Размер порции (×)</span><input type="number" id="t-lena-portion" step="0.05" min="0.1"></div>
+    </div>
+    <div class="card">
+      <h2>Цели — Вася</h2>
+      <div class="settings-row"><span>Калории</span><input type="number" id="t-vasya-kcal"></div>
+      <div class="settings-row"><span>Белки, г</span><input type="number" id="t-vasya-p"></div>
+      <div class="settings-row"><span>Жиры, г</span><input type="number" id="t-vasya-f"></div>
+      <div class="settings-row"><span>Углеводы, г</span><input type="number" id="t-vasya-c"></div>
+      <div class="settings-row"><span>Размер порции (×)</span><input type="number" id="t-vasya-portion" step="0.05" min="0.1"></div>
+    </div>
+    <p style="font-size:11px;color:#6b7280;margin-top:-6px;margin-bottom:10px;">Множитель применяется к рецептам автоматически при добавлении в дневник. Для штучных блюд (отмеченных в рецепте) множитель игнорируется — там считаем штуками.</p>
+    <button class="btn-primary" onclick="saveTargets()">Сохранить цели</button>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Магазины (для deep-links)</h2>
+      <p style="font-size:11px;color:#6b7280;margin-bottom:8px;">Какие сервисы показывать рядом с продуктом</p>
+      <div class="settings-row"><span>Яндекс Лавка</span><input type="checkbox" id="shop-lavka" style="text-align:left;width:auto;"></div>
+      <div class="settings-row"><span>СберМаркет</span><input type="checkbox" id="shop-sber" style="text-align:left;width:auto;"></div>
+      <div class="settings-row"><span>ВкусВилл</span><input type="checkbox" id="shop-vv" style="text-align:left;width:auto;"></div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Синхронизация (Firebase)</h2>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">
+        console.firebase.google.com → проект → Firestore (test mode) → Settings → Web App → конфиг сюда.
+      </p>
+      <textarea class="config-paste" id="firebaseConfig" placeholder='{ "apiKey": "...", "projectId": "..." }'></textarea>
+      <div class="settings-row" style="margin-top:8px;">
+        <span>Код пары</span>
+        <input type="text" id="coupleCode" placeholder="lena-vasya">
+      </div>
+      <button class="btn-primary" onclick="connectFirebase()" style="margin-top:8px;">🔗 Подключить</button>
+      <button class="btn-secondary" onclick="disconnectFirebase()">Отключить</button>
+      <div class="sync-status">
+        <span class="sync-dot" id="syncDotSettings"></span>
+        <span id="syncStatusText">не подключено</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Данные</h2>
+      <button class="btn-secondary" onclick="exportData()">📥 Экспорт JSON</button>
+      <button class="btn-secondary" onclick="document.getElementById('importFile').click()">📤 Импорт JSON</button>
+      <input type="file" id="importFile" style="display:none;" accept=".json" onchange="importData(event)">
+      <button class="btn-danger" onclick="resetAll()">⚠ Очистить локальные данные</button>
+    </div>
+  </section>
+</main>
+
+<!-- Modal: pick item -->
+<div class="modal-bg" id="modalPick" onclick="if(event.target===this)closeModal('modalPick')">
+  <div class="modal">
+    <h3><span id="pickTitle">Выбрать</span><button class="close" onclick="closeModal('modalPick')">×</button></h3>
+    <input type="text" class="ing-search" id="pickSearch" placeholder="Поиск..." oninput="filterPickModal()">
+    <div id="pickVariantsBlock"></div>
+    <div id="pickList"></div>
+  </div>
+</div>
+
+<!-- Modal: edit meal -->
+<div class="modal-bg" id="modalEdit" onclick="if(event.target===this)closeModal('modalEdit')">
+  <div class="modal">
+    <h3><span id="editTitle">Добавить</span><button class="close" onclick="closeModal('modalEdit')">×</button></h3>
+    <div class="batch-banner" id="batchBanner" style="display:none;">
+      <span class="icon">🍳</span>
+      <div class="info">
+        <div class="name" id="batchBannerName"></div>
+        <div class="meta" id="batchBannerMeta"></div>
+      </div>
+      <button class="remove" onclick="removeBatchFromMeal()" title="Готовить полностью свежее">✕</button>
+    </div>
+    <div class="portion-input">
+      <span id="portionsLabel">Порций</span>
+      <input type="number" id="editPortions" step="0.05" min="0.05" value="1" oninput="recalcEditModal()">
+      <button class="btn-secondary both-btn" onclick="setPortionsForBoth()" title="Лена + Вася (записать оба приёма сразу)">👫 На двоих</button>
+    </div>
+    <h4 id="freshHeader">Ингредиенты</h4>
+    <div id="editIngredients"></div>
+    <button class="btn-secondary" onclick="toggleAddIng()">+ Добавить продукт</button>
+    <div id="addIngBlock" style="display:none; margin-top:8px;">
+      <input type="text" class="ing-search" id="ingSearch" placeholder="Поиск продукта..." oninput="renderIngSuggest()">
+      <div class="ing-suggest" id="ingSuggest"></div>
+      <button class="btn-primary" id="addIngSubmitBtn" onclick="addSelectedFromSuggest('meal')" style="margin-top:8px;" disabled>Выбери продукты</button>
+    </div>
+    <textarea class="note-input" id="editNote" placeholder="Заметка"></textarea>
+    <div class="live-bju">
+      <div class="kcal-big" id="liveKcal">0 ккал</div>
+      <div class="bju-row">
+        <span>Б <b id="liveP">0</b></span>
+        <span>Ж <b id="liveF">0</b></span>
+        <span>У <b id="liveC">0</b></span>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="saveMealFromEdit()" id="editSaveBtn" style="margin-top:12px;">Добавить</button>
+  </div>
+</div>
+
+<!-- Modal: edit recipe -->
+<div class="modal-bg" id="modalRecipe" onclick="if(event.target===this)closeModal('modalRecipe')">
+  <div class="modal">
+    <h3><span id="recipeTitle">Рецепт</span><button class="close" onclick="closeModal('modalRecipe')">×</button></h3>
+    <div class="settings-row"><span>Название</span><input type="text" id="rName" style="text-align:left;"></div>
+    <div class="settings-row"><span>Порция</span><input type="text" id="rPortion" placeholder="1 порция" style="text-align:left;"></div>
+    <div class="settings-row" style="border-bottom:none;">
+      <span style="font-size:13px;">Штучное блюдо <span style="font-size:11px;color:#9ca3af;font-weight:400;">(блинчики, бейглы, печенье)</span></span>
+      <input type="checkbox" id="rPiecewise" style="text-align:left;width:auto;">
+    </div>
+    <p style="font-size:11px;color:#9ca3af;margin:-6px 0 8px;">Если отмечено — порция = 1 штука, при добавлении в дневник укажешь сколько штук съедено. Иначе — применяется множитель порции пользователя.</p>
+    <h4>Ингредиенты</h4>
+    <div id="rIngList"></div>
+    <button class="btn-secondary" onclick="toggleRecipeAddIng()" id="rAddIngBtn">+ Ингредиент</button>
+    <div id="rAddIngBlock" style="display:none;margin-top:10px;border-top:1px solid #f0f1f3;padding-top:10px;">
+      <input type="text" id="rIngSearch" placeholder="Поиск продукта…" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="renderRecipeIngSuggest()">
+      <div id="rIngSuggest" style="max-height:240px;overflow-y:auto;margin-top:8px;"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button class="btn-primary" onclick="confirmRecipeAddIng()" style="flex:1;">Добавить отмеченные</button>
+        <button class="btn-secondary" onclick="toggleRecipeAddIng()">Отмена</button>
+      </div>
+    </div>
+    <div class="live-bju">
+      <div class="kcal-big" id="rKcal">0 ккал</div>
+      <div class="bju-row">
+        <span>Б <b id="rP">0</b></span>
+        <span>Ж <b id="rF">0</b></span>
+        <span>У <b id="rC">0</b></span>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="saveRecipeEdit()" style="margin-top:12px;">Сохранить</button>
+  </div>
+</div>
+
+<!-- Modal: deduct from fridge -->
+<div class="modal-bg" id="modalDeduct" onclick="if(event.target===this)closeModal('modalDeduct')">
+  <div class="modal">
+    <h3><span>Списать с холодильника?</span><button class="close" onclick="cancelDeduct()">×</button></h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:10px;">
+      Сними галочки с того, что не из холодильника.
+    </p>
+    <div id="deductList"></div>
+    <button class="btn-primary" onclick="confirmDeduct()" style="margin-top:12px;">✓ Списать отмеченное</button>
+    <button class="btn-secondary" onclick="cancelDeduct()">Не списывать</button>
+  </div>
+</div>
+
+<!-- Modal: add/edit fridge item -->
+<div class="modal-bg" id="modalFridge" onclick="if(event.target===this)closeModal('modalFridge')">
+  <div class="modal">
+    <h3><span id="fridgeTitle">Добавить в холодильник</span><button class="close" onclick="closeModal('modalFridge')">×</button></h3>
+    <div class="prod-edit-row">
+      <span>Продукт</span>
+      <input type="text" id="fridgeName" placeholder="Например: творог 5%">
+    </div>
+    <div id="fridgeProductSuggest" class="ing-suggest" style="margin-top:-4px;"></div>
+    <div class="prod-edit-row">
+      <span>Граммов</span>
+      <input type="number" id="fridgeGrams" placeholder="200">
+    </div>
+    <div class="prod-edit-row">
+      <span>Срок годности</span>
+      <input type="date" id="fridgeExpiry">
+    </div>
+    <button class="btn-primary" onclick="saveFridgeItem()" style="margin-top:12px;">Сохранить</button>
+  </div>
+</div>
+
+<!-- Modal: add/edit regular -->
+<div class="modal-bg" id="modalRegular" onclick="if(event.target===this)closeModal('modalRegular')">
+  <div class="modal">
+    <h3><span>Регулярный продукт</span><button class="close" onclick="closeModal('modalRegular')">×</button></h3>
+    <div class="prod-edit-row">
+      <span>Название</span>
+      <input type="text" id="regularName" placeholder="Например: хлеб">
+    </div>
+    <div class="prod-edit-row">
+      <span>Сколько в неделю</span>
+      <input type="text" id="regularQty" placeholder="1 батон / 250г / 2 шт">
+    </div>
+    <button class="btn-primary" onclick="saveRegular()" style="margin-top:12px;">Сохранить</button>
+  </div>
+</div>
+
+<!-- Modal: edit product (упаковка/цена) -->
+<div class="modal-bg" id="modalProduct" onclick="if(event.target===this)closeModal('modalProduct')">
+  <div class="modal">
+    <h3><span id="productTitle">Продукт</span><button class="close" onclick="closeModal('modalProduct')">×</button></h3>
+    <div class="prod-edit-row">
+      <span>Размер упаковки</span>
+      <input type="number" id="prodPackSize" placeholder="200">
+      <span class="hint">грамм в одной пачке (если штучный — общий вес упаковки)</span>
+    </div>
+    <div class="prod-edit-row">
+      <span>Цена за упаковку, ₽</span>
+      <input type="number" id="prodPricePack" placeholder="89" step="0.01">
+    </div>
+    <div class="prod-edit-row">
+      <span>или цена за 100г, ₽</span>
+      <input type="number" id="prodPriceUnit" placeholder="44.5" step="0.01">
+      <span class="hint">если упаковка варьируется (овощи на вес)</span>
+    </div>
+    <button class="btn-primary" onclick="saveProductPricing()" style="margin-top:12px;">Сохранить</button>
+  </div>
+</div>
+
+<!-- Modal: quick custom dish -->
+<div class="modal-bg" id="modalQuickCustom" onclick="if(event.target===this)closeModal('modalQuickCustom')">
+  <div class="modal">
+    <h3><span>Произвольное блюдо</span><button class="close" onclick="closeModal('modalQuickCustom')">×</button></h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:12px;">Если БЖУ не знаешь — оставь нули, посчитаются только калории.</p>
+    <div class="prod-edit-row"><span>Название</span>
+      <input type="text" id="qcName" placeholder="Например: суши в Тануки"></div>
+    <div class="prod-edit-row"><span>Ккал</span>
+      <input type="number" id="qcKcal" placeholder="600"></div>
+    <div class="prod-edit-row"><span>Белки, г</span>
+      <input type="number" id="qcP" value="0"></div>
+    <div class="prod-edit-row"><span>Жиры, г</span>
+      <input type="number" id="qcF" value="0"></div>
+    <div class="prod-edit-row"><span>Углеводы, г</span>
+      <input type="number" id="qcC" value="0"></div>
+    <button class="btn-primary" onclick="saveQuickCustom()" style="margin-top:12px;">Добавить</button>
+  </div>
+</div>
+
+<!-- Modal: add to week plan -->
+<div class="modal-bg" id="modalAddWeekMeal" onclick="if(event.target===this)closeModal('modalAddWeekMeal')">
+  <div class="modal">
+    <h3><span id="weekMealTitle">Добавить блюдо в день</span><button class="close" onclick="closeModal('modalAddWeekMeal')">×</button></h3>
+    <input type="text" class="ing-search" id="weekMealSearch" placeholder="Поиск рецепта..." oninput="filterWeekMealModal()">
+    <div id="weekMealList"></div>
+  </div>
+</div>
+
+<!-- Modal: create/edit batch -->
+<div class="modal-bg" id="modalCreateBatch" onclick="if(event.target===this)closeModal('modalCreateBatch')">
+  <div class="modal">
+    <h3><span id="batchTitle">Новая заготовка</span><button class="close" onclick="closeModal('modalCreateBatch')">×</button></h3>
+    <div class="prod-edit-row"><span>Название</span>
+      <input type="text" id="batchName" placeholder="Например: бейглы 4 мая" oninput="onBatchNameChange()">
+    </div>
+    <div class="prod-edit-row"><span>На основе рецепта</span>
+      <select id="batchRecipeSelect" style="padding:7px 9px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; font-family:inherit;" onchange="loadBatchFromRecipe()">
+        <option value="">— нет, ввожу с нуля —</option>
+      </select>
+    </div>
+    <h4>Что использовала (фактически)</h4>
+    <div id="batchIngredients"></div>
+    <button class="btn-secondary" onclick="toggleBatchAddIng()">+ Продукт</button>
+    <div id="batchAddIngBlock" style="display:none; margin-top:8px;">
+      <input type="text" class="ing-search" id="batchIngSearch" placeholder="Поиск..." oninput="renderBatchIngSuggest()">
+      <div class="ing-suggest" id="batchIngSuggest"></div>
+      <button class="btn-primary" id="batchAddIngSubmitBtn" onclick="addSelectedFromSuggest('batch')" style="margin-top:8px;" disabled>Выбери продукты</button>
+    </div>
+    <div class="prod-edit-row" style="margin-top:14px;"><span>Сколько порций получилось</span>
+      <input type="number" id="batchPortions" value="10" min="1" step="1" oninput="recalcBatchModal()">
+    </div>
+    <div class="prod-edit-row"><span>Срок годности</span>
+      <input type="date" id="batchExpiry">
+    </div>
+    <div class="live-bju">
+      <div class="kcal-big" id="batchKcalPer">0 ккал/порция</div>
+      <div class="bju-row">
+        <span>Б <b id="batchPPer">0</b></span>
+        <span>Ж <b id="batchFPer">0</b></span>
+        <span>У <b id="batchCPer">0</b></span>
+      </div>
+      <div style="font-size:11px; color:#6b7280; margin-top:6px;" id="batchTotalLabel">Всего на партию: 0 ккал</div>
+    </div>
+    <button class="btn-primary" onclick="saveBatch()" style="margin-top:12px;">Сохранить заготовку</button>
+  </div>
+</div>
+
+<!-- Modal: import via text -->
+<div class="modal-bg" id="modalImportText" onclick="if(event.target===this)closeModal('modalImportText')">
+  <div class="modal">
+    <h3><span>Вставь текст чека / заказа</span><button class="close" onclick="closeModal('modalImportText')">×</button></h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:10px;">Скопируй из email от Лавки/СберМаркета, из приложения, или откуда угодно. Парсер найдёт знакомые продукты.</p>
+    <textarea id="importTextarea" placeholder="Например:
+Творог Простоквашино 5% 200г - 89.50 р
+Молоко Домик в деревне 2.5% 950 мл - 95 р
+Курица грудка 700г - 430 р
+..." style="width:100%;min-height:180px;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;resize:vertical;"></textarea>
+    <button class="btn-primary" onclick="processTextImport()" style="margin-top:12px;">Распознать продукты</button>
+  </div>
+</div>
+
+<!-- Modal: import review -->
+<div class="modal-bg" id="modalImport" onclick="if(event.target===this)closeModal('modalImport')">
+  <div class="modal">
+    <h3><span>Распознано из чека</span><button class="close" onclick="closeModal('modalImport')">×</button></h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:10px;">Нашёл <b id="importDetectedCount">0</b> продуктов из <b id="importLinesCount">0</b> строк. Сними галочки с того, что не нужно, поправь граммовку при необходимости.</p>
+    <div id="importList"></div>
+    <p id="importUnrecognized" style="font-size:11px;color:#9ca3af;margin-top:12px;font-style:italic;"></p>
+    <button class="btn-primary" onclick="confirmImport()" style="margin-top:12px;">Добавить отмеченные в холодильник</button>
+  </div>
+</div>
+
+<!-- Modal: what to eat (предложения блюд из имеющихся продуктов) -->
+<div class="modal-bg" id="modalWhatToEat" onclick="if(event.target===this)closeModal('modalWhatToEat')">
+  <div class="modal">
+    <h3><span>🍽 Что съесть?</span><button class="close" onclick="closeModal('modalWhatToEat')">×</button></h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:10px;">Подбор рецептов из продуктов которые есть в холодильнике и кладовой. Зелёный — всё есть, жёлтый — частично, серый — почти ничего нет.</p>
+    <div id="whatToEatList"></div>
+  </div>
+</div>
+
+<!-- Modal: bundle import (JSON со списком продуктов) -->
+<div class="modal-bg" id="modalBundle" onclick="if(event.target===this)closeModal('modalBundle')">
+  <div class="modal">
+    <h3><span>Импорт продуктов</span><button class="close" onclick="closeModal('modalBundle')">×</button></h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">JSON со списком продуктов и алиасов. Уже существующие в базе — пропустятся.</p>
+    <textarea id="bundleText" rows="14" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:8px;border:1px solid #d1d5db;border-radius:6px;" placeholder='{"products":[{"name":"...", "pack":..., "kcal":..., "p":..., "f":..., "c":...}], "aliases":{"raw name":"target name"}}'></textarea>
+    <button class="btn-primary" onclick="confirmBundleImport()" style="margin-top:10px;">Импортировать</button>
+  </div>
+</div>
+
+<!-- Modal: create custom product from import -->
+<div class="modal-bg" id="modalCreateProduct" onclick="if(event.target===this)cancelCreateProduct()">
+  <div class="modal">
+    <h3><span>Новый продукт</span><button class="close" onclick="cancelCreateProduct()">×</button></h3>
+    <p style="font-size:11px;color:#92400e;background:#fef3c7;padding:8px 10px;border-radius:6px;margin-bottom:12px;">Из чека: <span id="cpRawName" style="font-weight:600;"></span></p>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:12px;">Введи понятное название (как удобно тебе) и БЖУ. Сохранится в базу — в следующий раз тот же товар автоматически распознается.</p>
+    <div class="prod-edit-row"><span>Название</span>
+      <input type="text" id="cpName" placeholder="Пиво стаут (Василеостровская)">
+    </div>
+    <div class="prod-edit-row"><span>Упаковка, г/мл</span>
+      <input type="number" id="cpPack" placeholder="330" min="1">
+    </div>
+    <div class="prod-edit-row"><span>Штук в упаковке<br><small style="color:#9ca3af;">если штучный товар</small></span>
+      <input type="number" id="cpPcs" placeholder="напр. 3" min="1">
+    </div>
+    <div class="prod-edit-row"><span>Цена за упаковку, ₽</span>
+      <input type="number" id="cpPrice" placeholder="(опционально)" step="0.01">
+    </div>
+    <h4 style="margin-top:14px;">БЖУ на 100 г/мл</h4>
+    <div class="prod-edit-row"><span>Калории</span>
+      <input type="number" id="cpKcal" placeholder="50">
+    </div>
+    <div class="prod-edit-row"><span>Белки, г</span>
+      <input type="number" id="cpP" placeholder="0.5" step="0.1">
+    </div>
+    <div class="prod-edit-row"><span>Жиры, г</span>
+      <input type="number" id="cpF" placeholder="0" step="0.1">
+    </div>
+    <div class="prod-edit-row"><span>Углеводы, г</span>
+      <input type="number" id="cpC" placeholder="5" step="0.1">
+    </div>
+    <button class="btn-primary" onclick="saveCustomProduct()" style="margin-top:14px;">Сохранить продукт</button>
+    <button class="btn-secondary" onclick="cancelCreateProduct()">Отмена</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
